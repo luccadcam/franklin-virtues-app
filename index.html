@@ -20,17 +20,17 @@
   .wrap{max-width:960px;margin:12px auto;padding:12px 10px 12px 8px;}
 
   /* header */
-  header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+  header{display:flex;align-items:center;justify-content:flex-start;margin-bottom:10px;gap:14px;}
   .icon img{width:48px;height:48px;border-radius:10px;}
-  .title{font-weight:700;font-size:20px;margin-left:8px;flex-grow:1;text-align:left;} /* shifted right */
+  .title{font-weight:700;font-size:20px;margin-left:4px;}
 
-  .headerRight{text-align:right;min-width:210px;cursor:pointer;} /* click to edit date */
+  .headerRight{margin-left:auto;text-align:right;min-width:210px;}
 
   /* cycles */
-  .cyclesRow{display:flex;gap:8px;align-items:center;margin-top:4px;}
+  .cyclesRow{display:flex;gap:8px;align-items:center;margin-top:4px;flex-wrap:wrap;}
   .cycleBtn{padding:8px 12px;border-radius:10px;border:1px solid var(--cell-border);background:transparent;color:var(--text);cursor:pointer;font-weight:700;}
   .cycleBtn.active{background:var(--text);color:var(--bg);box-shadow:0 6px 18px rgba(0,0,0,0.06);}
-  .cycleRange{font-size:13px;color:var(--muted);margin-top:4px;text-decoration:underline;} /* signal editable date */
+  .cycleRange{font-size:13px;color:var(--muted);margin-top:4px;cursor:pointer;}
 
   /* virtue block */
   .virtueBlock{margin-bottom:16px;padding:10px 12px;border-radius:12px;position:relative;}
@@ -62,16 +62,16 @@
     <header>
       <div class="icon"><img src="franklin_logo.png" alt="Franklin logo"></div>
       <div class="title">Franklin's Virtues</div>
-      <div class="headerRight" id="editStartDate">
+      <div class="headerRight">
         <div id="cyclesRow" class="cyclesRow"></div>
-        <div id="cycleRange" class="cycleRange" title="Tap to change start date"></div>
+        <div id="cycleRange" class="cycleRange"></div>
       </div>
     </header>
 
     <div id="virtueContainer"></div>
   </div>
 
-  <!-- Modal for comments -->
+  <!-- Modal -->
   <div class="modal" id="modal">
     <div class="box">
       <div id="modalTitle" style="font-weight:700;margin-bottom:8px;"></div>
@@ -84,7 +84,7 @@
   </div>
 
 <script>
-const virtues=[ /* unchanged array omitted for brevity */ 
+const virtues=[ /* (unchanged virtues array) */ 
   {name:"Temperance",desc:"Eat not to dullness; drink not to elevation."},
   {name:"Silence",desc:"Speak not but what may benefit others or yourself; avoid trifling conversation."},
   {name:"Order",desc:"Let all your things have their places; let each part of your business have its time."},
@@ -100,12 +100,29 @@ const virtues=[ /* unchanged array omitted for brevity */
   {name:"Humility",desc:"Imitate Jesus and Socrates."}
 ];
 
-// 🔧 Start date now stored and editable
-let cycleStart=new Date(localStorage.getItem("franklin_start_date")||"2025-11-10T00:00:00Z");
+const cycleStartDefault = new Date("2025-11-10T00:00:00Z");
+const weeksPerCycle = 13;
 
-const weeksPerCycle=13;
+function getCycleStart(cycle){
+  const saved = localStorage.getItem(`cycle_start_${cycle}`);
+  if(saved) return new Date(saved);
+  return new Date(cycleStartDefault.getTime() + (cycle-1)*weeksPerCycle*7*86400000);
+}
+function setCycleStart(cycle,date){
+  localStorage.setItem(`cycle_start_${cycle}`, date.toISOString());
+}
+
+function cycleDateRange(cycle){
+  const start = getCycleStart(cycle);
+  const end = new Date(start.getTime() + weeksPerCycle*7*86400000 - 1);
+  return {start, end};
+}
+
+function formatDMY(d){
+  return `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${d.getFullYear()}`;
+}
+
 function storageKey(cycle){return`franklin_cycle_${cycle}`;}
-
 function initCycle(cycle){
   const k=storageKey(cycle);
   if(!localStorage.getItem(k)){
@@ -116,28 +133,26 @@ function initCycle(cycle){
 function loadCycle(cycle){initCycle(cycle);return JSON.parse(localStorage.getItem(storageKey(cycle)));}
 function saveCycle(cycle,data){localStorage.setItem(storageKey(cycle),JSON.stringify(data));}
 
-function cycleDateRange(cycle){
-  const s=new Date(cycleStart);
-  s.setDate(s.getDate()+(cycle-1)*weeksPerCycle*7);
-  const e=new Date(s);
-  e.setDate(e.getDate()+weeksPerCycle*7-1);
-  return{start:s,end:e};
-}
-function formatDMY(d){const dt=new Date(d);return`${dt.getDate().toString().padStart(2,'0')}/${(dt.getMonth()+1).toString().padStart(2,'0')}/${dt.getFullYear()}`;}
 function currentWeekIndexInCycle(cycle){
   const now=new Date();
   const{start,end}=cycleDateRange(cycle);
   if(now<start)return 0;
   if(now>end)return weeksPerCycle-1;
-  const diff=Math.floor((now-start)/(1000*60*60*24));
+  const diff=Math.floor((now-start)/86400000);
   return Math.min(weeksPerCycle-1,Math.floor(diff/7));
 }
 
 const container=document.getElementById("virtueContainer");
 const cyclesRow=document.getElementById("cyclesRow");
 const cycleRange=document.getElementById("cycleRange");
+const modal=document.getElementById("modal");
+const modalText=document.getElementById("modalText");
+const modalTitle=document.getElementById("modalTitle");
+const modalSave=document.getElementById("modalSave");
+const modalCancel=document.getElementById("modalCancel");
 
-let activeCycle=parseInt(localStorage.getItem("franklin_active_cycle")||"1");
+let activeCycle=parseInt(localStorage.getItem("franklin_active_cycle")||"1",10);
+if(activeCycle<1||activeCycle>4)activeCycle=1;
 for(let c=1;c<=4;c++)initCycle(c);
 
 function renderCycleButtons(){
@@ -151,6 +166,17 @@ function renderCycleButtons(){
   }
   const{start,end}=cycleDateRange(activeCycle);
   cycleRange.textContent=`Cycle ${activeCycle}: ${formatDMY(start)} – ${formatDMY(end)}`;
+
+  // click to change start date:
+  cycleRange.onclick=()=>{
+    const current = getCycleStart(activeCycle);
+    const newVal = prompt(`Enter new start date for Cycle ${activeCycle} (YYYY-MM-DD):`, current.toISOString().slice(0,10));
+    if(!newVal) return;
+    const d=new Date(newVal+"T00:00:00");
+    if(isNaN(d.getTime())){alert("Invalid date format.");return;}
+    setCycleStart(activeCycle,d);
+    render();
+  };
 }
 
 function render(){
@@ -165,7 +191,6 @@ function render(){
     vb.innerHTML=`<div class='virtueTitle'>${virtues[vi].name}</div><div class='virtueDesc'>${virtues[vi].desc}</div>`;
     const sq=document.createElement("div");
     sq.className="squares";
-
     for(let d=0;d<7;d++){
       const cdat=data.weeks[vi][d];
       const cell=document.createElement("div");
@@ -173,14 +198,17 @@ function render(){
       if(cdat.state===1){cell.classList.add("issue");const dot=document.createElement("div");dot.className="dot";cell.appendChild(dot);}
       else if(cdat.state===2){cell.classList.add("success");const svg=document.createElementNS("http://www.w3.org/2000/svg","svg");svg.setAttribute("viewBox","0 0 24 24");svg.classList.add("check");svg.innerHTML='<path fill="white" d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/>';cell.appendChild(svg);}
       if(cdat.comment)cell.classList.add("comment");
-      const tip=document.createElement("div");tip.className="tooltip";tip.textContent=cdat.comment||"Hold to add note";cell.appendChild(tip);
+      const tip=document.createElement("div");tip.className="tooltip";tip.textContent=cdat.comment||"Hold to add a note";cell.appendChild(tip);
 
       let timer=null;const longMs=600;
       function startPress(e){
         if(e.cancelable)e.preventDefault();
+        const touchY=e.touches?e.touches[0].clientY:0;
+        const nearBottom=window.innerHeight-touchY<80;
+        if(nearBottom)return;
         timer=setTimeout(()=>{openComment(vi,d);timer=null;},longMs);
       }
-      function endPress(){if(timer){clearTimeout(timer);timer=null;toggleState(vi,d);}}
+      function endPress(e){if(timer){clearTimeout(timer);timer=null;toggleState(vi,d);}}
       cell.addEventListener("touchstart",startPress,{passive:false});
       cell.addEventListener("touchend",endPress);
       cell.addEventListener("mousedown",(ev)=>{if(ev.buttons===1)startPress(ev);});
@@ -188,7 +216,6 @@ function render(){
       cell.addEventListener("mouseleave",()=>{if(timer){clearTimeout(timer);timer=null;}});
       sq.appendChild(cell);
     }
-
     vb.appendChild(sq);
     container.appendChild(vb);
   }
@@ -201,13 +228,6 @@ function toggleState(vi,d){
   render();
 }
 
-// comment modal
-const modal=document.getElementById("modal");
-const modalText=document.getElementById("modalText");
-const modalTitle=document.getElementById("modalTitle");
-const modalSave=document.getElementById("modalSave");
-const modalCancel=document.getElementById("modalCancel");
-
 function openComment(vi,d){
   const data=loadCycle(activeCycle);
   modalTitle.textContent=`${virtues[vi].name} — ${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][d]}`;
@@ -218,25 +238,13 @@ function openComment(vi,d){
 }
 
 modalSave.onclick=()=>{
-  const vi=parseInt(modal.dataset.vi),d=parseInt(modal.dataset.d);
+  const vi=parseInt(modal.dataset.vi,10),d=parseInt(modal.dataset.d,10);
   const data=loadCycle(activeCycle);
   data.weeks[vi][d].comment=modalText.value.trim();
   saveCycle(activeCycle,data);
   modal.style.display="none";render();
 };
 modalCancel.onclick=()=>modal.style.display="none";
-
-// NEW: Change start date
-document.getElementById("editStartDate").onclick=()=>{
-  const val=prompt("Enter new start date (YYYY-MM-DD):",cycleStart.toISOString().slice(0,10));
-  if(!val)return;
-  const nd=new Date(val+"T00:00:00");
-  if(Number.isNaN(nd.getTime())){alert("Invalid date format.");return;}
-  cycleStart=nd;
-  localStorage.setItem("franklin_start_date",cycleStart.toISOString());
-  render();
-};
-
 render();
 </script>
 </body>
